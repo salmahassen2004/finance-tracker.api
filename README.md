@@ -1,19 +1,20 @@
-# Finance Tracker API 
+# Finance Tracker API
 
-Backend API to track personal expenses, built with FastAPI and PostgreSQL.
+A simple backend API built with FastAPI.
 
 ## Features
-- Add transactions
-- View all transactions
-- Filter by category
-- Calculate total spending
+- User signup and login
+- Password hashing (bcrypt)
+- JWT authentication
+- Add and view transactions
 
 ## Tech Stack
 - FastAPI
-- PostgreSQL
 - SQLAlchemy
+- SQLite
+- JWT (python-jose)
 
-## Run locally
+## How to run
 
 ```bash
 uvicorn main:app --reload
