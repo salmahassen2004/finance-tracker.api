@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from fastapi.security import OAuth2PasswordBearer
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+from fastapi.security import OAuth2PasswordRequestForm
 
 
 SECRET_KEY = "your-secret-key"  # change later
@@ -98,24 +99,28 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 
 # Login
 @app.post("/login")
-def login(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == user.email).first()
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    db_user = db.query(User).filter(User.email == form_data.username).first()
 
     if not db_user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # ✅ correct order
-    if not pwd_context.verify(user.password, db_user.password):
+    if not pwd_context.verify(form_data.password, db_user.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    # ✅ CREATE TOKEN
     access_token = create_access_token(data={"sub": db_user.email})
 
+    # ✅ RETURN TOKEN (THIS IS REQUIRED)
     return {
-    "access_token": access_token,
-    "token_type": "bearer"
-}
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
 
-# Add transaction (no auth yet — next step)
+# Add transaction 
 @app.post("/transactions")
 def add_transaction(
     transaction: Transaction,
@@ -132,5 +137,10 @@ def add_transaction(
     return new_transaction
 
 @app.get("/transactions")
-def get_transactions(db: Session = Depends(get_db)):
-    return db.query(TransactionModel).all()
+def get_transactions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(TransactionModel).filter(
+        TransactionModel.user_id == current_user.id
+    ).all()
