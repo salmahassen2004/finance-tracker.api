@@ -7,11 +7,30 @@ from models import Base, User, Transaction as TransactionModel
 
 from passlib.context import CryptContext
 
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+
+from fastapi.security import OAuth2PasswordBearer
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+
+SECRET_KEY = "your-secret-key"  # change later
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def get_db():
     db = SessionLocal()
@@ -28,6 +47,32 @@ class UserCreate(BaseModel):
 class Transaction(BaseModel):
     amount: float
     category: str
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials"
+    )
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+
+        if email is None:
+            raise credentials_exception
+
+    except JWTError:
+        raise credentials_exception
+
+    user = db.query(User).filter(User.email == email).first()
+
+    if user is None:
+        raise credentials_exception
+
+    return user
 
 # Signup
 
@@ -63,15 +108,24 @@ def login(user: UserCreate, db: Session = Depends(get_db)):
     if not pwd_context.verify(user.password, db_user.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    return {"id": new_user.id, "email": new_user.email}
+    access_token = create_access_token(data={"sub": db_user.email})
+
+    return {
+    "access_token": access_token,
+    "token_type": "bearer"
+}
 
 # Add transaction (no auth yet — next step)
 @app.post("/transactions")
-def add_transaction(transaction: Transaction, db: Session = Depends(get_db)):
+def add_transaction(
+    transaction: Transaction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     new_transaction = TransactionModel(
         amount=transaction.amount,
         category=transaction.category,
-        user_id=1  # temporary
+        user_id=current_user.id 
     )
     db.add(new_transaction)
     db.commit()
